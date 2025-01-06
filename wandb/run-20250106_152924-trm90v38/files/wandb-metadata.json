@@ -1,0 +1,42 @@
+{
+  "os": "macOS-15.0.1-arm64-arm-64bit",
+  "python": "CPython 3.11.0",
+  "startedAt": "2025-01-06T20:29:24.976948Z",
+  "program": "-m cleanup_ssps.main",
+  "git": {
+    "remote": "https://github.com/kremHabashy/CleanupSSP.git",
+    "commit": "0baedb275eeed65c17991cac7880f6e2deff083c"
+  },
+  "email": "krhabashy@gmail.com",
+  "root": "/Users/karimhabashy/Desktop/LOO/MASTERS/CleanUp",
+  "host": "Karims-MacBook-Pro.local",
+  "executable": "/Users/karimhabashy/Desktop/LOO/MASTERS/CleanUp/CleanUp/bin/python",
+  "cpu_count": 8,
+  "cpu_count_logical": 8,
+  "disk": {
+    "/": {
+      "total": "494384795648",
+      "used": "451537108992"
+    },
+    "/System/Volumes/Data": {
+      "total": "494384795648",
+      "used": "451537108992"
+    }
+  },
+  "memory": {
+    "total": "17179869184"
+  },
+  "cpu": {
+    "count": 8,
+    "countLogical": 8
+  },
+  "apple": {
+    "name": "Apple M1 Pro",
+    "ecpuCores": 2,
+    "pcpuCores": 6,
+    "gpuCores": 14,
+    "memoryGb": 16,
+    "swapTotalBytes": "13958643712",
+    "ramTotalBytes": "17179869184"
+  }
+}

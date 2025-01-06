@@ -1,0 +1,37 @@
+experiments:
+  - name: "test"
+    tags: ["uniform", "hypersphere"]
+    ssp_config:
+      length_scale: 0.675
+      n_rotates: 4
+      n_scales: 4
+    trainer_config:
+      batch_size: 512
+      epochs: 1
+      lr: 1.e-4
+      weight_decay: 1.e-4
+      val_split: 0.1
+      logit_m: -1.0
+      logit_s: 2.0
+      data_dir: "/Users/karimhabashy/Desktop/LOO/MASTERS/CleanUp/data/train/coordinate_ssps"
+      test_dir: "/Users/karimhabashy/Desktop/LOO/MASTERS/CleanUp/data/test/coordinate_ssps"
+      noise_type: "uniform_hypersphere"
+      target_type: "coordinate"
+
+  # - name: "hehe"
+  #   tags: ["gaussian", "noise"]
+  #   ssp_config:
+  #     length_scale: 0.65
+  #     n_rotates: 3
+  #     n_scales: 3
+  #   trainer_config:
+  #     batch_size: 512
+  #     epochs: 50
+  #     lr: 1.e-4
+  #     weight_decay: 1.e-4
+  #     val_split: 0.1
+  #     logit_m: -1.0
+  #     logit_s: 2.0
+  #     data_dir: "/Users/karimhabashy/Desktop/LOO/MASTERS/CleanUp/data/train/coordinate_ssps"
+  #     noise_type: "gaussian"  # Moved here
+  #     target_type: "coordinate"  # Moved here
