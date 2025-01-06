@@ -95,55 +95,8 @@ python evaluation.py
 
 ---
 
-## Examples
-
-### Example Workflow
-1. Generate clean and corrupted datasets:
-   ```bash
-   python generate_data.py
-   ```
-2. Train a rectified flow model on the generated data:
-   ```bash
-   python run.py
-   ```
-3. Evaluate the model's performance:
-   ```bash
-   python evaluation.py
-   ```
-
----
-
-## Visualization
-Use W&B to track experiments and visualize results:
-- Log metrics such as cosine similarity.
-- Generate plots for SNR evaluation and cleanup performance.
-
----
-
-## Future Work
-- Implement advanced generative models for SSP reconstruction.
-- Explore different SSP encoding schemes and domain configurations.
-- Optimize training for high-dimensional SSP spaces.
-
----
-
-## Contributing
-Contributions are welcome! If you would like to contribute:
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature-name`).
-3. Commit your changes (`git commit -m 'Add feature'`).
-4. Push to the branch (`git push origin feature-name`).
-5. Open a pull request.
-
----
-
-## License
-This project is licensed under the MIT License. See the `LICENSE` file for more details.
-
----
-
 ## Contact
 For questions or issues, please reach out to:
-- **Karim Habashy**: [Your Contact Info]
+- **Karim Habashy**: khabashy@uwaterloo.ca
 
 ---
