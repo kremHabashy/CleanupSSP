@@ -1,0 +1,9 @@
+CleanUp/
+.Cleanup/
+
+data/
+
+__pycache__/
+*.py[cod]
+
+*.log
