@@ -1,0 +1,30 @@
+CleanUp/
+data/
+
+# Data files
+*.npy
+
+# Experiment logs
+wandb/
+checkpoints/
+logs/
+
+# Large binaries
+*.pt
+*.pth
+*.onnx
+*.mp4
+*.avi
+*.mov
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc

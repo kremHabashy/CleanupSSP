@@ -1,0 +1,31 @@
+experiments:
+  - name: "ode_all_denoiser"
+    tags: ["uniform", "hypersphere"]
+    ssp_config:
+      length_scale: 0.2
+      n_rotates: 3
+      n_scales: 3
+    trainer_config:
+      device: "cuda"
+      batch_size: 256
+      epochs: 200
+      lr: 1.e-4
+      weight_decay: 5.e-4
+      val_split: 0.1
+      data_dir: "/u1/khabashy/CleanupSSP/data/dim_55_scale_0.2/train/coordinate_ssps"
+      test_dir: "/u1/khabashy/CleanupSSP/data/dim_55_scale_0.2/test/coordinate_ssps"
+      noise_type: "uniform_hypersphere"
+      target_type: "coordinate"
+      ot_method: "exact"
+      ot_reg: 0.01
+      sampling_modes:
+        - feedforward
+        - deterministic
+        - improved
+        - schrodinger
+        - vp
+
+    eval_config:
+      signal_strengths: [0., 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.75, 1.0]
+      num_steps: [1, 2, 5, 10, 50]
+      repeats: 1
