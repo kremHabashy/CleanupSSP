@@ -1,0 +1,48 @@
+experiments:
+  - name: "Flow_Model_Small"
+    tags: ["flow", "small"]
+    ssp_config:
+      n_rotates: 4
+      n_scales: 4
+      length_scale: 0.75
+    trainer_config:
+      model_size: "small"
+      device: "cuda"  # Change to "cpu" if needed
+      epochs: 100
+      batch_size: 128
+      learning_rate: 1e-4
+      weight_decay: 1e-4
+      test_dir: "data/test"
+      signal_strengths: [0.1, 0.3, 0.5, 0.7, 0.9]  # Noise levels for training and evaluation
+
+  - name: "Flow_Model_Medium"
+    tags: ["flow", "medium"]
+    ssp_config:
+      n_rotates: 6
+      n_scales: 6
+      length_scale: 0.75
+    trainer_config:
+      model_size: "medium"
+      device: "cuda"
+      epochs: 100
+      batch_size: 128
+      learning_rate: 1e-4
+      weight_decay: 1e-4
+      test_dir: "data/test"
+      signal_strengths: [0.1, 0.3, 0.5, 0.7, 0.9]
+
+  - name: "Flow_Model_Large"
+    tags: ["flow", "large"]
+    ssp_config:
+      n_rotates: 8
+      n_scales: 8
+      length_scale: 0.75
+    trainer_config:
+      model_size: "large"
+      device: "cuda"
+      epochs: 100
+      batch_size: 128
+      learning_rate: 1e-4
+      weight_decay: 1e-4
+      test_dir: "data/test"
+      signal_strengths: [0.1, 0.3, 0.5, 0.7, 0.9]

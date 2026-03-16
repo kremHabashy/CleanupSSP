@@ -1,0 +1,5 @@
+experiments:
+  - name: "flow_eval"
+    dims: [55, 151, 295, 487, 727, 1015]
+    ls: 0.2
+    num_steps: [1, 2, 5, 10, 50, 100]
