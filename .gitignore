@@ -3,7 +3,6 @@
 venv/
 data/
 wandb/
-trained_models/
 figures/
 checkpoints/
 logs/
@@ -11,6 +10,13 @@ OT_strength_results/
 slam_results/
 experiments_old/
 notebooks/
+
+# Trained weights: ignore contents but keep placeholder
+trained_models/*
+!trained_models/.gitkeep
+
+# Accidental local Python trees (e.g. debugpy / mis-set interpreter) — never commit
+lib/
 
 # Data files
 *.npy
@@ -34,4 +40,3 @@ notebooks/
 # Python
 __pycache__/
 *.pyc
-lib/

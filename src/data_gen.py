@@ -31,7 +31,7 @@ def ensure_training_data(
 
     domain_dim = int(ssp_cfg.get("domain_dim", 2))
     bounds = np.asarray(
-        ssp_cfg.get("domain_bounds", [[2, 3], [2, 3]]),
+        ssp_cfg.get("domain_bounds", [[-1, 1], [-1, 1]]),
         dtype=np.float64,
     )
 

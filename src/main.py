@@ -78,7 +78,20 @@ def run_pipeline(
             entity=wb.get("entity"),
         )
 
-    trainer_cfg = build_trainer_config(cfg, ds["train_dir"], ds["test_dir"])
+    ck_root = paths["checkpoint_dir"]
+    if not isinstance(ck_root, Path):
+        ck_root = Path(ck_root)
+    group = ds.get("dataset_group") or "unknown_dataset_group"
+    checkpoint_run_dir = (ck_root / group).resolve()
+    checkpoint_run_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Checkpoints directory: {checkpoint_run_dir}")
+
+    trainer_cfg = build_trainer_config(
+        cfg,
+        ds["train_dir"],
+        ds["test_dir"],
+        checkpoint_dir=checkpoint_run_dir,
+    )
     trainer_cfg["device"] = device
     nw = trainer_cfg.get("dataloader_num_workers")
     print(
@@ -104,6 +117,7 @@ def run_pipeline(
         "training_results": results,
         "paths": paths,
         "device": device,
+        "checkpoint_dir": checkpoint_run_dir,
     }
 
 

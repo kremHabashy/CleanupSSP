@@ -1,3 +1,5 @@
+from pathlib import Path
+import torch
 from utils.wandb_utils import log_metrics
 import numpy as np
 import plotly.graph_objects as go
@@ -33,6 +35,9 @@ class TrainingManager:
 
         self.train_feedforward = bool(trainer_configs.get("train_feedforward", True))
 
+        ck = trainer_configs.get("checkpoint_dir")
+        self.checkpoint_dir = Path(ck).resolve() if ck else None
+
     # Decide COUPLING per sampling mode
     # Returns: (use_ot_train: bool, ot_method: str|None, ot_reg: float|None)
     def _ot_for_mode(self, sampling):
@@ -49,6 +54,14 @@ class TrainingManager:
             return (True, "sinkhorn", self.trainer_configs.get("ot_reg_sb", 0.05))
 
         return False, None, None  # random/independent coupling
+
+    def _save_checkpoint(self, filename: str, module: torch.nn.Module) -> None:
+        if self.checkpoint_dir is None:
+            return
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        path = self.checkpoint_dir / filename
+        torch.save(module.state_dict(), path)
+        print(f"  Saved checkpoint {path}")
 
     def train(self):
         results = {}
@@ -85,6 +98,7 @@ class TrainingManager:
             print("Training FeedForward (with OT pairing)" if ff_trainer.use_ot_train else "FeedForward (random pairing)")
             model_ff, loss_ff, val_ff = ff_trainer.train()
             results[("ResidualMLP_FF", "euc_det")] = ((model_ff,), loss_ff, val_ff)
+            self._save_checkpoint("feedforward.pt", model_ff)
 
             for epoch, (tr, vl) in enumerate(zip(loss_ff, val_ff)):
                 log_metrics({
@@ -133,6 +147,7 @@ class TrainingManager:
 
             models_rf, loss_rf, val_rf = rf_trainer.train()
             results[("ResidualMLP_RF", sampling)] = (models_rf, loss_rf, val_rf)
+            self._save_checkpoint(f"drift_{sampling}.pt", models_rf[0])
 
             for epoch, (tr, vl) in enumerate(zip(loss_rf, val_rf)):
                 log_metrics({

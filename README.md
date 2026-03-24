@@ -2,7 +2,7 @@
 
 Research code for cleaning corrupted Spatial Semantic Pointers (SSPs) with feedforward MLPs and rectified flow-matching (geodesic or Euclidean), with optional optimal-transport pairings during training.
 
-## Quick start (recommended)
+## To run things
 
 1. **Python 3.10+**, then from the repo root:
 
@@ -21,7 +21,7 @@ Research code for cleaning corrupted Spatial Semantic Pointers (SSPs) with feedf
    python -m src.main
    ```
 
-   This loads `configs/config.yaml`, ensures data under `paths.data_root`, trains each `trainer.sampling_modes` entry, then runs evaluation.
+   This loads `configs/config.yaml`, ensures data under `paths.data_root`, trains each `trainer.sampling_modes` entry, saves weights, then runs evaluation.
 
 ### Weights & Biases
 
@@ -32,48 +32,42 @@ Research code for cleaning corrupted Spatial Semantic Pointers (SSPs) with feedf
 
 | Path | Purpose |
 |------|---------|
-| `configs/config.yaml` | **Single source of truth** for one full run (`python -m src.main`) |
+| `configs/config.yaml` | One full run (`python -m src.main`) |
 | `src/main.py` | Orchestrates config, data, optional W&B, train, eval |
-| `src/utils.py` | Load / validate YAML, resolve relative paths |
-| `src/data_gen.py` | Build SSP space; call `ensure_target_dataset` |
+| `src/utils.py` | Load / validate YAML configs |
+| `src/data_gen.py` | Build SSP space; ensure dataset |
 | `src/train.py` | Map YAML → `TrainingManager` kwargs |
 | `src/evaluate.py` | Map YAML → `EvaluationManager` |
 | `cleanup_ssps/` | SSP spaces, `SSPDataset`, flow trainers, `dataset_registry`, legacy CLI |
 | `utils/` | `TrainingManager`, `EvaluationManager`, W&B helpers, OT utilities |
-| `tests/` | `python -m unittest discover -s tests` |
+| `trained_models/` | Checkpoints (empty in git; see below) |
 
-## Data on disk
+## Data and checkpoints on disk
 
-Under `paths.data_root`, datasets use a **geometry folder** (bundle, encoded dim, length scale, bounds) with flat splits:
+**Datasets** under `paths.data_root` use a **geometry folder** name (bundle, encoded dim, length scale, bounds), same as in `cleanup_ssps.dataset_registry.dataset_group_dirname`:
 
 - `{group}/train/*.npy` — training targets  
 - `{group}/test/*.npy` — test targets  
-- `{group}/A_matrix.npy` — axis matrix for that run  
-- `{group}/dataset_meta.json` — hash / counts / paths  
+- `{group}/A_matrix.npy`, `{group}/dataset_meta.json`
 
-Older trees (`{group}/dataset_{hash}/…` or `dataset_{hash}/` at root) are still detected. Set `data.train_subdir` / `data.test_subdir` in YAML if your folders use a different layout (e.g. legacy `train/targets`).
+**Checkpoints** are written under `paths.checkpoint_dir / {group}/` (the same `{group}` string as the dataset), for example:
 
-Training reads target `.npy` files from disk; **noise `z0`** is drawn each step in `cleanup_ssps/dataset.py` from `trainer.noise_type` (hypersphere or Gaussian). Eval uses the same noise/target types; signal-strength sweeps blend noise and target only when building the **model initial state** (see `utils/evaluation.py`), not inside the dataset.
+- `feedforward.pt` (if `train_feedforward: true`)
+- `drift_{sampling_mode}.pt` for each flow mode
 
-**Windows:** keep `trainer.dataloader_num_workers: 0` unless you are sure multiprocessing DataLoader helps.
+The repo keeps an empty `trained_models/` tree via `.gitkeep`; `.pt` files stay untracked.
 
-## Legacy multi-experiment driver
+Training reads target `.npy` files from disk; **noise `z0`** is drawn each step in `cleanup_ssps/dataset.py` from `trainer.noise_type`. Eval uses the same noise/target types; signal-strength sweeps blend only the **model initial state** in `utils/evaluation.py`, not the dataset.
+
+**Do not commit** a project-local `lib/python3.10/...` tree (that usually means the IDE pointed at a venv inside the repo). Use `.venv` outside the tree or a normal virtualenv; `lib/` is gitignored.
+
+## Old multi-experiment driver
 
 ```bash
 python cleanup_ssps/main.py
 ```
 
-Uses `configs/experiments.yaml` (list under `experiments:`). Prefer `src.main` + `config.yaml` for new work.
-
-## Submodule (optional)
-
-`.gitmodules` references `power_spherical`; **`pip install -r requirements.txt`** already pulls `power-spherical` from PyPI, so you do not need the submodule for a normal install.
-
-## Tests
-
-```bash
-python -m unittest discover -s tests -p "test*.py" -v
-```
+Uses `configs/experiments.yaml`. Checkpoints go under `trained_models/{dataset_group}/` the same way.
 
 ## Contact
 

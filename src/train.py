@@ -12,9 +12,11 @@ def build_trainer_config(
     cfg: dict[str, Any],
     train_dir: str,
     test_dir: str,
+    *,
+    checkpoint_dir: Any | None = None,
 ) -> dict[str, Any]:
     t = cfg["trainer"]
-    return {
+    out = {
         "data_dir": train_dir,
         "test_dir": test_dir,
         "sampling_modes": t["sampling_modes"],
@@ -37,6 +39,9 @@ def build_trainer_config(
         "dataloader_num_workers": t.get("dataloader_num_workers"),
         "dataloader_prefetch_factor": t.get("dataloader_prefetch_factor", 2),
     }
+    if checkpoint_dir is not None:
+        out["checkpoint_dir"] = checkpoint_dir
+    return out
 
 
 def run_training(ssp_space, ssp_cfg: dict[str, Any], trainer_cfg: dict[str, Any]):

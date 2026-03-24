@@ -185,9 +185,9 @@ def main():
         grp = dataset_info.get("dataset_group", "?")
         print(f"Dataset {state}: group={grp} id={dataset_info['dataset_id']}")
 
-        # prepare save directory
+        # prepare save directory (same naming convention as dataset geometry folder)
         run_folder = f"dim{enc_dim}_ls{ssp_cfg['length_scale']}"
-        save_dir   = SAVE_ROOT / run_folder
+        save_dir = SAVE_ROOT / dataset_info.get("dataset_group", run_folder)
         save_dir.mkdir(parents=True, exist_ok=True)
 
         # train or load each mode
