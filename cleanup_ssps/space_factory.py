@@ -31,13 +31,13 @@ def resolve_encoded_dim(ssp_config: dict) -> int:
 
 
 def _default_bounds(domain_bounds):
-    return np.array([[2, 3], [2, 3]]) if domain_bounds is None else domain_bounds
+    return np.array([[-1, 1], [-1, 1]]) if domain_bounds is None else domain_bounds
 
 
 @register_space_builder("hex", "hexagonal")
 def _build_hexagonal(ssp_config: dict, *, domain_dim: int = 2, domain_bounds=None):
     encoded_dim = resolve_encoded_dim(ssp_config)
-    length_scale = float(ssp_config.get("length_scale", 1.0))
+    length_scale = float(ssp_config.get("length_scale", 0.2))
     n_rot = int(ssp_config.get("n_rotates", 4))
     n_scl = int(ssp_config.get("n_scales", 4))
 
@@ -54,7 +54,7 @@ def _build_hexagonal(ssp_config: dict, *, domain_dim: int = 2, domain_bounds=Non
 @register_space_builder("random")
 def _build_random(ssp_config: dict, *, domain_dim: int = 2, domain_bounds=None):
     encoded_dim = resolve_encoded_dim(ssp_config)
-    length_scale = float(ssp_config.get("length_scale", 1.0))
+    length_scale = float(ssp_config.get("length_scale", 0.2))
     seed = ssp_config.get("random_seed")
     rng = np.random.default_rng(seed) if seed is not None else np.random.default_rng()
 
