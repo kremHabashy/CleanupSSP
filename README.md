@@ -1,102 +1,80 @@
 # Cleanup SSP
 
-The goal of this project is to train models for cleaning up corrupted Spatial Semantic Pointer (SSP) representations. It includes implementations of rectified flow models and standard MLPs for reconstructing SSPs from noise. 
+Research code for cleaning corrupted Spatial Semantic Pointers (SSPs) with feedforward MLPs and rectified flow-matching (geodesic or Euclidean), with optional optimal-transport pairings during training.
 
----
+## Quick start (recommended)
 
-## Features
+1. **Python 3.10+**, then from the repo root:
 
-### Core Functionality
-- **Data Generation**: Generate clean and corrupted SSP datasets using hexagonal tiling and other SSP spaces.
-- **Models**: Implementations of Multilayer Perceptron (MLP), Rectified Flow models, and autoencoders.
-- **Training and Evaluation**:
-  - Train models using cosine similarity as the primary loss function.
-  - Evaluate models across signal/noise strength.
-  - Compare performance of different architectures and training paradigms on cleanup tasks.
-- **Visualization**:
-  - Generate similarity maps and contour plots to visualize SSP performance.
-  - Log metrics and results using W&B integration.
+   ```bash
+   pip install -r requirements.txt
+   pip install -e .
+   ```
 
-### SSP-Specific Components
-- **HexagonalSSPSpace**: A class that uses hexagonal tiling for SSP encoding.
-- **Binding and Decoding**: Methods to bind semantic pointers, decode SSPs to their spatial representations, and clean up noisy SSPs.
-- **Flexible SSP Configurations**: Support for varying SSP dimensions, length scales, and domain bounds.
+   Install a CUDA build of PyTorch if you use `trainer.device: cuda` in the config.
 
----
+2. **Edit** `configs/config.yaml` (paths, SSP geometry, data sizes, trainer, eval, W&B).
 
-## Project Structure
+3. **Run**:
 
-```plaintext
-CleanUp/
-├── cleanup_ssps/           # Μain module
-│   ├── cleanup_methods/    # Rectified Flow, Feedforward, VAE and Diffusion class definitions
-│   ├── dataset/            # Configuration for model dimensionalities and processing the training data
-│   ├── main/               # Processing experiments
-│   ├── model/              # Main architecture for the different training paradigms
-│   ├── run/                # Trainer classes for the different training paradigms
-│   ├── sspspace/           # Used to generate SSPs
-├── power_spherical/        # Spherical distribution sampling
-├── data/                   # Folder for generated datasets
-│   ├── train/              
-│   └── test/               
-├── utils/                  # Utilities
-│   ├── config_loader/      # Loading experiment configuration
-│   ├── evaluation_utils/   # For calculating baseline performance (dot product max)
-│   ├── evaluation/         # Evaluation functions
-│   ├── generate_data/  
-│   ├── training/           # Training functions
-│   ├── wandb_utils/        # Logging and initialization
-├── configs/  
-│   ├── experiments/        # Configuration of the experiments
-├── README.md               
-├── requirements.txt        
-```
+   ```bash
+   python -m src.main
+   ```
 
----
+   This loads `configs/config.yaml`, ensures data under `paths.data_root`, trains each `trainer.sampling_modes` entry, then runs evaluation.
 
-## Usage
+### Weights & Biases
 
-### Data Generation
-Generate datasets for training and testing:
+- Set `wandb.enabled: false` in `configs/config.yaml` to skip init from the `src` pipeline (`src/main.py` respects this).
+- For `WANDB_API_KEY` and optional `wandb.entity`, see comments in the config.
 
-```bash
-python generate_data.py
-```
+## Where things live (modular layout)
 
-### Training Models
-Train a rectified flow model:
+| Path | Purpose |
+|------|---------|
+| `configs/config.yaml` | **Single source of truth** for one full run (`python -m src.main`) |
+| `src/main.py` | Orchestrates config, data, optional W&B, train, eval |
+| `src/utils.py` | Load / validate YAML, resolve relative paths |
+| `src/data_gen.py` | Build SSP space; call `ensure_target_dataset` |
+| `src/train.py` | Map YAML → `TrainingManager` kwargs |
+| `src/evaluate.py` | Map YAML → `EvaluationManager` |
+| `cleanup_ssps/` | SSP spaces, `SSPDataset`, flow trainers, `dataset_registry`, legacy CLI |
+| `utils/` | `TrainingManager`, `EvaluationManager`, W&B helpers, OT utilities |
+| `tests/` | `python -m unittest discover -s tests` |
+
+## Data on disk
+
+Under `paths.data_root`, datasets use a **geometry folder** (bundle, encoded dim, length scale, bounds) with flat splits:
+
+- `{group}/train/*.npy` — training targets  
+- `{group}/test/*.npy` — test targets  
+- `{group}/A_matrix.npy` — axis matrix for that run  
+- `{group}/dataset_meta.json` — hash / counts / paths  
+
+Older trees (`{group}/dataset_{hash}/…` or `dataset_{hash}/` at root) are still detected. Set `data.train_subdir` / `data.test_subdir` in YAML if your folders use a different layout (e.g. legacy `train/targets`).
+
+Training reads target `.npy` files from disk; **noise `z0`** is drawn each step in `cleanup_ssps/dataset.py` from `trainer.noise_type` (hypersphere or Gaussian). Eval uses the same noise/target types; signal-strength sweeps blend noise and target only when building the **model initial state** (see `utils/evaluation.py`), not inside the dataset.
+
+**Windows:** keep `trainer.dataloader_num_workers: 0` unless you are sure multiprocessing DataLoader helps.
+
+## Legacy multi-experiment driver
 
 ```bash
-python run.py
+python cleanup_ssps/main.py
 ```
 
-### Evaluation
-Evaluate the trained models using the evaluation script:
+Uses `configs/experiments.yaml` (list under `experiments:`). Prefer `src.main` + `config.yaml` for new work.
+
+## Submodule (optional)
+
+`.gitmodules` references `power_spherical`; **`pip install -r requirements.txt`** already pulls `power-spherical` from PyPI, so you do not need the submodule for a normal install.
+
+## Tests
 
 ```bash
-python evaluation.py
+python -m unittest discover -s tests -p "test*.py" -v
 ```
-
----
-
-## Key Configuration Parameters
-
-### SSP Configuration
-- `ssp_dim`: The dimensionality of the SSP vectors.
-- `n_rotates`: Number of rotations in the hexagonal tiling.
-- `n_scales`: Number of scales in the hexagonal tiling.
-- `length_scale`: Scaling factor for SSP encoding.
-
-### Training Configuration
-- `batch_size`: Number of samples per training batch.
-- `epochs`: Number of training epochs.
-- `lr`: Learning rate for the optimizer.
-- `snr`: Signal-to-Noise Ratio for dataset corruption.
-
----
 
 ## Contact
-For questions or issues, please reach out to:
-- **Karim Habashy**: khabashy@uwaterloo.ca
 
----
+Karim Habashy: khabashy@uwaterloo.ca

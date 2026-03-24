@@ -4,6 +4,18 @@ import plotly.graph_objects as go
 from cleanup_ssps.model import MLP_Small, ResidualMLP
 from cleanup_ssps.run import FlowTrainer, FeedforwardTrainer
 
+_DEFAULT_SAMPLING_MODES = [
+    "geo_det",
+    "geo_amb_const",
+    "geo_tan_const",
+    "geo_amb_sb",
+    "geo_tan_sb",
+    "euc_det",
+    "euc_ot",
+    "euc_sb",
+]
+
+
 class TrainingManager:
     def __init__(self, ssp_space, trainer_configs, ssp_config,
                  sampling_modes=None):
@@ -12,19 +24,14 @@ class TrainingManager:
         self.ssp_config      = ssp_config
         self.device          = trainer_configs.get("device", "cpu")
 
-        # Canonical list of modes we’ll support in this run
-        self.sampling_modes = sampling_modes or [
-            # Geodesic family
-            "geo_det",         # random pairing
-            "geo_amb_const",   # exact OT
-            "geo_tan_const",   # exact OT
-            "geo_amb_sb",      # Sinkhorn
-            "geo_tan_sb",      # Sinkhorn
-            # Euclidean family
-            "euc_det",         # random pairing
-            "euc_ot",          # exact OT
-            "euc_sb",          # Sinkhorn
-        ]
+        if sampling_modes is not None:
+            self.sampling_modes = list(sampling_modes)
+        else:
+            self.sampling_modes = list(
+                trainer_configs.get("sampling_modes") or _DEFAULT_SAMPLING_MODES
+            )
+
+        self.train_feedforward = bool(trainer_configs.get("train_feedforward", True))
 
     # Decide COUPLING per sampling mode
     # Returns: (use_ot_train: bool, ot_method: str|None, ot_reg: float|None)
@@ -46,42 +53,47 @@ class TrainingManager:
     def train(self):
         results = {}
 
-        # ---------------- 1) Feed-forward baseline (leave as you prefer) ----------------
-        ff_arch = ResidualMLP(self.ssp_space.ssp_dim, flow=False).to(self.device)
+        # ---------------- 1) Feed-forward baseline (optional) ----------------
+        if self.train_feedforward:
+            ff_arch = ResidualMLP(self.ssp_space.ssp_dim, flow=False).to(self.device)
 
-        ff_use_ot = True
-        ff_ot_method = self.trainer_configs.get("ot_method", "sinkhorn")
-        ff_ot_reg    = self.trainer_configs.get("ot_reg",    0.005)
+            ff_use_ot = True
+            ff_ot_method = self.trainer_configs.get("ot_method", "sinkhorn")
+            ff_ot_reg    = self.trainer_configs.get("ot_reg",    0.005)
 
-        ff_trainer = FeedforwardTrainer(
-            encoded_dim = self.ssp_space.ssp_dim,
-            data_dir    = self.trainer_configs["data_dir"],
-            batch_size  = self.trainer_configs["batch_size"],
-            epochs      = self.trainer_configs["epochs"],
-            lr          = self.trainer_configs["lr"],
-            weight_decay= self.trainer_configs["weight_decay"],
-            val_split   = self.trainer_configs["val_split"],
-            noise_type  = self.trainer_configs["noise_type"],
-            target_type = self.trainer_configs["target_type"],
-            architecture= ff_arch,
-            device      = self.device,
+            ff_trainer = FeedforwardTrainer(
+                encoded_dim = self.ssp_space.ssp_dim,
+                data_dir    = self.trainer_configs["data_dir"],
+                batch_size  = self.trainer_configs["batch_size"],
+                epochs      = self.trainer_configs["epochs"],
+                lr          = self.trainer_configs["lr"],
+                weight_decay= self.trainer_configs["weight_decay"],
+                val_split   = self.trainer_configs["val_split"],
+                noise_type  = self.trainer_configs["noise_type"],
+                target_type = self.trainer_configs["target_type"],
+                architecture= ff_arch,
+                device      = self.device,
 
-            use_ot_train = ff_use_ot,
-            ot_method    = ff_ot_method,
-            ot_reg       = ff_ot_reg,
-        )
-        print("Training FeedForward (with OT pairing)" if ff_trainer.use_ot_train else "FeedForward (random pairing)")
-        model_ff, loss_ff, val_ff = ff_trainer.train()
-        results[("ResidualMLP_FF", "euc_det")] = ((model_ff,), loss_ff, val_ff)
+                use_ot_train = ff_use_ot,
+                ot_method    = ff_ot_method,
+                ot_reg       = ff_ot_reg,
+                dataloader_num_workers=self.trainer_configs.get("dataloader_num_workers"),
+                dataloader_prefetch_factor=self.trainer_configs.get(
+                    "dataloader_prefetch_factor", 2
+                ),
+            )
+            print("Training FeedForward (with OT pairing)" if ff_trainer.use_ot_train else "FeedForward (random pairing)")
+            model_ff, loss_ff, val_ff = ff_trainer.train()
+            results[("ResidualMLP_FF", "euc_det")] = ((model_ff,), loss_ff, val_ff)
 
-        for epoch, (tr, vl) in enumerate(zip(loss_ff, val_ff)):
-            log_metrics({
-                "trainer":   "ResidualMLP_FF",
-                "sampling":  "euc_det",
-                "epoch":     epoch,
-                "train_loss": tr,
-                "val_loss":   vl
-            })
+            for epoch, (tr, vl) in enumerate(zip(loss_ff, val_ff)):
+                log_metrics({
+                    "trainer":   "ResidualMLP_FF",
+                    "sampling":  "euc_det",
+                    "epoch":     epoch,
+                    "train_loss": tr,
+                    "val_loss":   vl
+                })
 
         # ---------------- 2) Flow-matching / diffusion variants ----------------
         E = self.trainer_configs["epochs"]
@@ -113,6 +125,10 @@ class TrainingManager:
                 use_ot_train  = use_ot_train,
                 ot_method     = ot_method,
                 ot_reg        = ot_reg,
+                dataloader_num_workers=self.trainer_configs.get("dataloader_num_workers"),
+                dataloader_prefetch_factor=self.trainer_configs.get(
+                    "dataloader_prefetch_factor", 2
+                ),
             )
 
             models_rf, loss_rf, val_rf = rf_trainer.train()

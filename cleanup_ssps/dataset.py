@@ -19,9 +19,15 @@ def gaussian_noise(ssp_dim: int) -> torch.Tensor:
 
 class SSPDataset(Dataset):
     """
-    Clean remake: emit true endpoints (z0, z1).
-      - TRAIN/VAL: (z0 ~ base noise, z1 ~ data), no SNR mixing here.
-      - TEST:      same; evaluation code will build start states from (z0, z1).
+    Pairs a noise start **z0** with a target SSP **z1** loaded from ``data_dir``.
+
+    **z1** always comes from disk (same encoding as when the dataset was built).
+
+    **z0** is always a fresh noise draw from ``noise_type`` only:
+    ``uniform_hypersphere`` (unit sphere) or ``gaussian`` (Gaussian then normalized).
+    It is never blended with **z1** here. ``signal_strength`` is kept for API
+    compatibility with trainers/eval callers but is not used in ``__getitem__``;
+    evaluation can form a separate initial state for the flow from (z0, z1) if needed.
     """
     def __init__(
         self,
@@ -29,7 +35,7 @@ class SSPDataset(Dataset):
         ssp_dim: int,
         target_type: str = "coordinate",
         noise_type: str = "uniform_hypersphere",  # {"uniform_hypersphere","gaussian"}
-        signal_strength: float = 1.0,             # kept for API parity; NOT used here
+        signal_strength: float = 0.0,             # unused in __getitem__; see class docstring
         mode: str = "train",
         device: str = "cpu",                      # kept for API parity; tensors on CPU
     ):
@@ -37,7 +43,7 @@ class SSPDataset(Dataset):
         self.ssp_dim         = ssp_dim
         self.target_type     = target_type
         self.noise_type      = noise_type
-        self.signal_strength = float(signal_strength)  # intentionally unused in dataset
+        self.signal_strength = float(signal_strength)
         self.mode            = mode
         self.device          = device
 
@@ -57,7 +63,6 @@ class SSPDataset(Dataset):
         z1 = torch.tensor(np.load(target_path), dtype=torch.float32)
         z1 = _renorm(z1)
 
-        # Sample base prior z0 according to requested noise_type
         if self.noise_type == "uniform_hypersphere":
             z0 = uniform_noise(self.ssp_dim)
         elif self.noise_type == "gaussian":
@@ -65,7 +70,6 @@ class SSPDataset(Dataset):
         else:
             raise ValueError(f"Unknown noise_type: {self.noise_type}")
 
-        # Return true endpoints; NO SNR mixing here.
         return z0, z1
 
     def split_dataset(self, val_split: float = 0.1):

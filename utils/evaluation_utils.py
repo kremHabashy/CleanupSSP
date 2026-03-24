@@ -5,14 +5,19 @@ import numpy as np
 def compute_cleanup_baseline(
     ssp_space,
     ssp_dim,               # ← included for compatibility
-    snr,
+    snr: float | None,
     grid_resolution=64,
     method='sobol',
     num_trials=100,
     device="cpu"
 ):
     """
-    Returns dict:
+    Nearest-grid cleanup baseline.
+
+    ``corrupted = snr * gt_ssp + (1 - snr) * z`` with ``z`` unit noise on the sphere.
+    ``snr`` 1 = clean targets, 0 = pure noise. ``None`` is treated as ``0.0``.
+
+    Returns dict with keys:
       mean_cosine, std_cosine, ci95_cosine,
       mean_rmse,   std_rmse,   ci95_rmse
     """
@@ -34,10 +39,13 @@ def compute_cleanup_baseline(
     gt_ssps = torch.tensor(gt_ssps, device=device)       # (T, d)
     gt_pts  = gt_pts                                     # (T,2)
 
-    # 3) corrupt
+    # 3) corrupt  (snr=1 → clean SSP; snr=0 → pure hypersphere noise)
+    if snr is None:
+        snr = 0.0
+    snr = float(snr)
     z = torch.randn_like(gt_ssps)
     z = z / z.norm(dim=1, keepdim=True)
-    corrupted = snr * gt_ssps + (1 - snr) * z            # (T, d)
+    corrupted = snr * gt_ssps + (1.0 - snr) * z          # (T, d)
 
     # 4) cleanup by nearest‐grid
     sims = corrupted @ grid_ssps.T                       # (T, G)

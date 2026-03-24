@@ -5,13 +5,14 @@ import torch.nn as nn
 import numpy as np
 from pathlib import Path
 
-from cleanup_ssps.sspspace import HexagonalSSPSpace
+from cleanup_ssps.space_factory import build_ssp_space, resolve_encoded_dim
 from cleanup_ssps.run import FeedforwardTrainer, FlowTrainer
 from cleanup_ssps.model import ResidualMLP
 from utils.training import TrainingManager
 from utils.evaluation import EvaluationManager
 from utils.wandb_utils import initialize_wandb
 from utils.config_loader import load_experiments
+from cleanup_ssps.dataset_registry import DatasetSpec, ensure_target_dataset
 
 # -----------------------------------------------------------------------------
 # Absolute paths
@@ -28,11 +29,22 @@ def drift_filename(mode: str) -> str:
 def score_filename(mode: str) -> str:
     return f"score_{mode}.pt"
 
+
+def _extract_modules_from_training_entry(entry):
+    """Unpack TrainingManager.train() value: (models, train_losses, val_losses)."""
+    models_part, _, _ = entry
+    if isinstance(models_part, (tuple, list)):
+        return [m for m in models_part if isinstance(m, nn.Module)]
+    if isinstance(models_part, nn.Module):
+        return [models_part]
+    raise TypeError(f"Unexpected models payload: {type(models_part)}")
+
+
 def load_or_train_mode(
     mode: str,
     encoded_dim: int,
     save_dir: Path,
-    ssp_space: HexagonalSSPSpace,
+    ssp_space,
     trainer_config: dict,
     ssp_config: dict,
     device: str
@@ -79,21 +91,29 @@ def load_or_train_mode(
     # 2) Otherwise train via TrainingManager
     print(f"  → No checkpoint for [{mode}] — training it now")
     tc = dict(trainer_config)
-    tc["sampling_modes"] = [mode]
-    tm = TrainingManager(ssp_space, tc, ssp_config)
-    results = tm.train()  # dict with keys like (name, mode)
+    mode_lower = mode.lower()
+    if mode_lower in ("ff", "feedforward"):
+        tc["train_feedforward"] = True
+        tc["sampling_modes"] = []
+    else:
+        tc["train_feedforward"] = False
+        tc["sampling_modes"] = [mode]
 
-    # --- robustly find the entry for this mode ---
-    matching = [k for k in results if k[1] == mode]
+    tm = TrainingManager(ssp_space, tc, ssp_config)
+    results = tm.train()
+
+    if mode_lower in ("ff", "feedforward"):
+        matching = [k for k in results if k[0].endswith("_FF")]
+    else:
+        matching = [k for k in results if k[1] == mode]
     if not matching:
         raise KeyError(f"No training result for mode '{mode}'. Available keys: {list(results.keys())}")
     key = matching[0]
-    modules = results.pop(key)
-    # --------------------------------------------
+    entry = results.pop(key)
+    modules = _extract_modules_from_training_entry(entry)
 
-    # save the newly trained modules
     save_dir.mkdir(parents=True, exist_ok=True)
-    drift_mod = next(m for m in modules if isinstance(m, nn.Module))
+    drift_mod = modules[0]
     torch.save(drift_mod.state_dict(), ckpt_d)
     print(f"    • Saved drift [{mode}] → {ckpt_d}")
     if len(modules) > 1:
@@ -111,10 +131,8 @@ def main():
         tr_cfg  = experiment["trainer_config"]
         modes   = list(tr_cfg["sampling_modes"])
 
-        # compute encoded_dim
-        n_rot  = ssp_cfg["n_rotates"]
-        n_scl  = ssp_cfg["n_scales"]
-        enc_dim = n_rot * n_scl * 6 + 1
+        # compute encoded_dim from explicit config or bundle params
+        enc_dim = resolve_encoded_dim(ssp_cfg)
         ssp_cfg["encoded_dim"] = enc_dim
 
         # initialize wandb
@@ -133,17 +151,39 @@ def main():
             print("Using CPU")
             device = "cpu"
 
-        # build SSP space
+        # build SSP space from bundle class config
         t0 = time.time()
-        ssp_space = HexagonalSSPSpace(
-            domain_dim    = 2,
-            ssp_dim       = enc_dim,
-            domain_bounds = np.array([[2, 3], [2, 3]]),
-            length_scale  = ssp_cfg["length_scale"],
-            n_rotates     = n_rot,
-            n_scales      = n_scl
+        domain_dim = int(ssp_cfg.get("domain_dim", 2))
+        domain_bounds = np.asarray(
+            ssp_cfg.get("domain_bounds", [[-1, 1], [-1, 1]]),
+            dtype=float,
         )
-        print(f"SSP space created in {(time.time() - t0):.2f}s")
+        ssp_space = build_ssp_space(
+            ssp_cfg,
+            domain_dim=domain_dim,
+            domain_bounds=domain_bounds,
+        )
+        print(f"SSP space ({type(ssp_space).__name__}) created in {(time.time() - t0):.2f}s")
+
+        # ensure target dataset exists for this exact SSP configuration
+        data_root = PROJECT_ROOT / tr_cfg.get("data_root", "data")
+        dataset_spec = DatasetSpec(
+            data_root=data_root,
+            dataset_type=tr_cfg.get("target_dataset_type", "coordinate_ssps"),
+            encoded_dim=enc_dim,
+            length_scale=float(ssp_cfg["length_scale"]),
+            train_samples=int(tr_cfg.get("train_samples", 20000)),
+            test_samples=int(tr_cfg.get("test_samples", 5000)),
+            sampling_method=tr_cfg.get("dataset_sampling_method", "sobol"),
+            train_subdir=tr_cfg.get("train_subdir", "train"),
+            test_subdir=tr_cfg.get("test_subdir", "test"),
+        )
+        dataset_info = ensure_target_dataset(dataset_spec, ssp_cfg, ssp_space)
+        tr_cfg["data_dir"] = dataset_info["train_dir"]
+        tr_cfg["test_dir"] = dataset_info["test_dir"]
+        state = "created" if dataset_info["created"] else "reused"
+        grp = dataset_info.get("dataset_group", "?")
+        print(f"Dataset {state}: group={grp} id={dataset_info['dataset_id']}")
 
         # prepare save directory
         run_folder = f"dim{enc_dim}_ls{ssp_cfg['length_scale']}"
@@ -173,9 +213,8 @@ def main():
             signal_strengths = noise_lvls,
             eval_steps       = eval_steps,
             repeats          = repeats,
-            use_ot_eval      = False,
-            ot_method        = "sinkhorn",
-            ot_reg           = 0.1,
+            noise_type       = tr_cfg.get("noise_type", "uniform_hypersphere"),
+            target_type      = tr_cfg.get("target_type", "coordinate"),
         )
         eval_mgr.run_all(ssp_space, batch_size=tr_cfg["batch_size"])
         print(f"Evaluation completed in {(time.time() - t1):.2f}s\n")

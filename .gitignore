@@ -1,13 +1,19 @@
-CleanUp/
+﻿# Local / generated
+.venv/
+venv/
 data/
+wandb/
+trained_models/
+figures/
+checkpoints/
+logs/
+OT_strength_results/
+slam_results/
+experiments_old/
+notebooks/
 
 # Data files
 *.npy
-
-# Experiment logs
-wandb/
-checkpoints/
-logs/
 
 # Large binaries
 *.pt
@@ -28,3 +34,4 @@ logs/
 # Python
 __pycache__/
 *.pyc
+lib/

@@ -1,0 +1,80 @@
+# -----------------------------------------------------------------------------
+# CleanupSSP — single-run experiment template (Step 1)
+# Paths are relative to project root unless noted.
+# Later steps wire this to space_factory, dataset_registry, trainers, eval.
+# -----------------------------------------------------------------------------
+
+project:
+  name: cleanup-ssp
+  seed: 42
+
+wandb:
+  enabled: true
+  project: Clean_Up
+  tags: ["template"]
+
+paths:
+  data_root: data
+  checkpoint_dir: trained_models
+  figures_dir: figures
+
+experiment:
+  name: default_run
+  tags: ["dev"]
+
+ssp:
+  bundle_type: hexagonal
+  n_rotates: 4
+  n_scales: 4
+  length_scale: 0.2
+  domain_dim: 2
+  domain_bounds: [[-1, 1], [-1, 1]]
+
+data:
+  train_samples: 20000
+  test_samples: 5000
+  dataset_sampling_method: sobol
+  target_dataset_type: coordinate_ssps
+  train_subdir: train
+  test_subdir: test
+
+trainer:
+  # --- Rectified-flow modes (sampling_modes): coupling is fixed by mode name in utils/training.py:
+  #   * geo_det, euc_det                     → independent / random pairing (no OT; ot_* unused)
+  #   * geo_amb_const, geo_tan_const, euc_ot → exact discrete OT (EMD); ot_reg_sb unused
+  #   * geo_amb_sb, geo_tan_sb, euc_sb       → Sinkhorn OT; entropic blur = ot_reg_sb (below)
+  sampling_modes:
+    - geo_det
+  device: cuda
+  batch_size: 256
+  epochs: 10
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  val_split: 0.1
+  noise_type: uniform_hypersphere
+  target_type: coordinate
+  signal_strength: 0.0
+  sigma_min: 0.1
+  beta_min: 0.1
+  beta_max: 20.0
+
+  # --- Optimal transport (per batch: pair noise vectors z0 with target SSPs z1) ---
+  # Feedforward baseline only (train_feedforward: true → FeedforwardTrainer):
+  #   * ot_method → "sinkhorn" | "exact" | "none" (see cleanup_ssps/run.py); default sinkhorn
+  #   * ot_reg    → Sinkhorn ε only when ot_method is sinkhorn; higher ε → softer coupling
+  #   (cost is angular OT on the sphere unless you change code to euclidean.)
+  ot_method: sinkhorn
+  ot_reg: 0.005
+  ot_reg_sb: 0.05
+
+  train_feedforward: False
+  dataloader_num_workers: 0
+  dataloader_prefetch_factor: 2
+
+eval:
+  signal_strengths: [0.0, 0.25, 0.5, 0.75, 1.0]
+  num_steps: [1, 2, 5, 10]
+  repeats: 5
+
+schedule:
+  eval_every_epochs: null

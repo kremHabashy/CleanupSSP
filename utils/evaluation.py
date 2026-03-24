@@ -3,11 +3,20 @@ import numpy as np
 from torch.utils.data import DataLoader
 import plotly.graph_objs as go
 
-from cleanup_ssps.dataset import SSPDataset
+from cleanup_ssps.dataset import SSPDataset, _renorm
 from cleanup_ssps.cleanup_methods import FlowMatching
 from utils.evaluation_utils import compute_cleanup_baseline, compute_ssp_mean, make_unitary
 from utils.wandb_utils import log_metrics
 
+
+def _ode_init_from_noise(z_noise: torch.Tensor, z1: torch.Tensor, mix: float) -> torch.Tensor:
+    """Build the tensor passed to the flow / FF. ``z_noise`` is always pure noise (from :class:`SSPDataset`); ``mix`` moves the start toward ``z1`` for eval sweeps only."""
+    s = float(mix)
+    if s <= 0.0:
+        return z_noise
+    if s >= 1.0:
+        return z1
+    return _renorm(s * z1 + (1.0 - s) * z_noise)
 
 class EvaluationManager:
     def __init__(
@@ -18,6 +27,9 @@ class EvaluationManager:
         signal_strengths=None,
         eval_steps=None,
         repeats=5,
+        *,
+        noise_type="uniform_hypersphere",
+        target_type="coordinate",
     ):
         self.results           = training_results
         self.test_dir          = test_dir
@@ -25,6 +37,8 @@ class EvaluationManager:
         self.signal_strengths  = signal_strengths or [0.0, 0.25, 0.5, 0.75, 1.0]
         self.eval_steps        = eval_steps or [1, 2, 5, 10, 50]
         self.repeats           = repeats
+        self.noise_type        = noise_type
+        self.target_type       = target_type
 
     # labels consistent with your taxonomy
     def _label(self, name, mode):
@@ -39,10 +53,14 @@ class EvaluationManager:
         if mode == "euc_sb":             return "SB_CFM (Sinkhorn)"
         return f"{name} ({mode})"
 
-    def evaluate_model(self, name, mode, model_obj, dataset, batch_size=128, N=10):
+    def evaluate_model(self, name, mode, model_obj, dataset, batch_size=128, N=10, *, init_mix: float = 0.0):
         """
         Returns per-sample mean and std of cosine similarities over the test set.
         Uses ODE sampling only (deterministic flows). No eval-time OT pairing.
+
+        The dataloader yields pure-noise ``z0`` and target ``z1``. ``init_mix`` in
+        ``[0, 1]`` blends them into the initial state for the model only
+        (training-style starts use ``init_mix=0``).
         """
         if name.endswith("_FF"):
             ff_model = model_obj[0] if isinstance(model_obj, (tuple, list)) else model_obj
@@ -58,11 +76,12 @@ class EvaluationManager:
 
         with torch.no_grad():
             for inputs, targets in loader:
-                z0 = inputs.squeeze(1).to(self.device)
+                z_noise = inputs.squeeze(1).to(self.device)
                 z1 = targets.squeeze(1).to(self.device)
+                z_init = _ode_init_from_noise(z_noise, z1, init_mix)
 
                 if name.endswith("_FF"):
-                    preds = ff_model(z0)
+                    preds = ff_model(z_init)
                 else:
                     fm = FlowMatching(
                         model=flow_model,
@@ -71,7 +90,7 @@ class EvaluationManager:
                         device=self.device,
                         sigma_min=getattr(flow_model, "sigma_min", 0.1),  # harmless if unused
                     )
-                    preds = fm.sample_ode(z_init=z0, N=N, use_sphere=use_sphere)[-1]
+                    preds = fm.sample_ode(z_init=z_init, N=N, use_sphere=use_sphere)[-1]
 
                 preds = make_unitary(preds)
                 preds = preds / preds.norm(dim=1, keepdim=True)
@@ -83,15 +102,17 @@ class EvaluationManager:
         return sims_all.mean().item(), sims_all.std().item()
 
     def evaluate_noise_levels(self, ssp_space, N, batch_size=128):
-        baseline_mean, baseline_std = compute_cleanup_baseline(
+        bl = compute_cleanup_baseline(
             ssp_space,
             ssp_dim=ssp_space.ssp_dim,
-            snr=None,
+            snr=0.0,
             grid_resolution=64,
             method='sobol',
             num_trials=2000,
-            device=self.device
+            device=self.device,
         )
+        baseline_mean = bl["mean_cosine"]
+        baseline_std = bl["std_cosine"]
 
         fig = go.Figure()
         fig.add_hline(
@@ -104,18 +125,18 @@ class EvaluationManager:
 
         for (name, mode), (model_obj, *_) in self.results.items():
             means, stds = [], []
+            ds = SSPDataset(
+                data_dir        = self.test_dir,
+                ssp_dim         = ssp_space.ssp_dim,
+                target_type     = self.target_type,
+                noise_type      = self.noise_type,
+                signal_strength = 0.0,
+                mode            = 'test'
+            )
             for sf in self.signal_strengths:
-                ds = SSPDataset(
-                    data_dir        = self.test_dir,
-                    ssp_dim         = ssp_space.ssp_dim,
-                    target_type     = 'coordinate',
-                    noise_type      = 'uniform_hypersphere',
-                    signal_strength = sf,
-                    mode            = 'test'
-                )
                 steps = 1 if name.endswith("_FF") else N
                 mean, std = self.evaluate_model(
-                    name, mode, model_obj, ds, batch_size, N=steps
+                    name, mode, model_obj, ds, batch_size, N=steps, init_mix=sf
                 )
                 means.append(mean)
                 stds.append(std)
@@ -140,23 +161,23 @@ class EvaluationManager:
         fig = go.Figure()
         for (name, mode), (model_obj, *_) in self.results.items():
             means, stds = [], []
+            ds = SSPDataset(
+                data_dir        = self.test_dir,
+                ssp_dim         = ssp_space.ssp_dim,
+                target_type     = self.target_type,
+                noise_type      = self.noise_type,
+                signal_strength = 0.0,
+                mode            = 'test'
+            )
             for N in self.eval_steps:
                 if name.endswith("_FF") and N > 1:
                     means.append(None)
                     stds.append(None)
                     continue
 
-                ds = SSPDataset(
-                    data_dir        = self.test_dir,
-                    ssp_dim         = ssp_space.ssp_dim,
-                    target_type     = 'coordinate',
-                    noise_type      = 'uniform_hypersphere',
-                    signal_strength = signal_strength,
-                    mode            = 'test'
-                )
                 steps = 1 if name.endswith("_FF") else N
                 mean, std = self.evaluate_model(
-                    name, mode, model_obj, ds, batch_size, N=steps
+                    name, mode, model_obj, ds, batch_size, N=steps, init_mix=signal_strength
                 )
                 means.append(mean)
                 stds.append(std)
@@ -195,17 +216,17 @@ class EvaluationManager:
         for gr in grid_resolutions:
             means, stds = [], []
             for sf in self.signal_strengths:
-                mean_sim, std_sim = compute_cleanup_baseline(
+                bl = compute_cleanup_baseline(
                     ssp_space,
                     ssp_dim         = ssp_space.ssp_dim,
                     snr             = sf,
                     grid_resolution = gr,
                     method          = 'sobol',
                     num_trials      = 100,
-                    device          = self.device
+                    device          = self.device,
                 )
-                means.append(mean_sim)
-                stds.append(std_sim)
+                means.append(bl["mean_cosine"])
+                stds.append(bl["std_cosine"])
 
             fig_base.add_trace(go.Scatter(
                 x=self.signal_strengths,

@@ -1,14 +1,28 @@
+import os
+
 import wandb
 
-api_key = "f7d5d329df98b1d6cd80d721946dd72bf96460de"
-def initialize_wandb(project_name, experiment_name, tags=None, config=None, api_key=api_key):
-    
-    if api_key:
-        wandb.login(key=api_key)
 
-    wandb.init(project=project_name, name=experiment_name, tags=tags)
+def initialize_wandb(
+    project_name,
+    experiment_name,
+    tags=None,
+    config=None,
+    api_key=None,
+    entity=None,
+):
+    key = api_key if api_key is not None else os.environ.get("WANDB_API_KEY")
+    if key:
+        wandb.login(key=key)
+
+    init_kw = {"project": project_name, "name": experiment_name, "tags": tags or []}
+    if entity:
+        init_kw["entity"] = entity
+    wandb.init(**init_kw)
     if config:
         wandb.config.update(config)
 
+
 def log_metrics(metrics):
-    wandb.log(metrics)
+    if wandb.run is not None:
+        wandb.log(metrics)

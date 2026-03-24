@@ -28,6 +28,14 @@ def _random_pair(z0_all, z1_all):
     return z0_all, z1_all[idx]
 
 
+def _dataloader_kwargs(num_workers: int, device: str, prefetch_factor: int = 2) -> dict:
+    nw = max(0, int(num_workers))
+    kw: dict = {"num_workers": nw, "pin_memory": bool(device == "cuda")}
+    if nw > 0:
+        kw["prefetch_factor"] = int(prefetch_factor)
+    return kw
+
+
 class FlowTrainer:
     def __init__(
         self,
@@ -53,6 +61,8 @@ class FlowTrainer:
         sigma_min:     float= 0.05,
         beta_min:      float= 0.1,
         beta_max:      float= 20.0,
+        dataloader_num_workers: int | None = None,
+        dataloader_prefetch_factor: int = 2,
     ):
         self.device          = device
         self.encoded_dim     = encoded_dim
@@ -79,6 +89,12 @@ class FlowTrainer:
             self.ot_reg = None
 
         self.ot_hard = False
+
+        if dataloader_num_workers is None:
+            self.dataloader_num_workers = 0 if sys.platform == "win32" else 4
+        else:
+            self.dataloader_num_workers = int(dataloader_num_workers)
+        self.dataloader_prefetch_factor = int(dataloader_prefetch_factor)
 
         # Flow wrapper
         self.flow_model = FlowMatching(
@@ -158,13 +174,16 @@ class FlowTrainer:
         return total / len(dataloader)
 
     def train(self):
-        train_loader = DataLoader(
-            self.train_dataset, batch_size=self.batch_size, shuffle=True,
-            num_workers=8, pin_memory=True, prefetch_factor=2
+        dkw = _dataloader_kwargs(
+            self.dataloader_num_workers,
+            self.device,
+            self.dataloader_prefetch_factor,
         )
-        val_loader   = DataLoader(
-            self.val_dataset, batch_size=self.batch_size, shuffle=False,
-            num_workers=8, pin_memory=True, prefetch_factor=2
+        train_loader = DataLoader(
+            self.train_dataset, batch_size=self.batch_size, shuffle=True, **dkw
+        )
+        val_loader = DataLoader(
+            self.val_dataset, batch_size=self.batch_size, shuffle=False, **dkw
         )
 
         loss_curve, val_curve = [], []
@@ -221,6 +240,8 @@ class FeedforwardTrainer:
         ot_method:    str  = "exact",   # "exact", "sinkhorn", or "none"
         ot_reg:       float | None = 0.05,
         ot_cost:      str  = "angular",    # "angular" or "euclidean"
+        dataloader_num_workers: int | None = None,
+        dataloader_prefetch_factor: int = 2,
     ):
         self.device          = device
         self.encoded_dim     = encoded_dim
@@ -232,6 +253,12 @@ class FeedforwardTrainer:
         self.signal_strength = signal_strength
         self.noise_type      = noise_type
         self.target_type     = target_type
+
+        if dataloader_num_workers is None:
+            self.dataloader_num_workers = 0 if sys.platform == "win32" else 4
+        else:
+            self.dataloader_num_workers = int(dataloader_num_workers)
+        self.dataloader_prefetch_factor = int(dataloader_prefetch_factor)
 
         # --- OT policy (avoid float(None)) ---
         self.use_ot_train = bool(use_ot_train)
@@ -288,13 +315,16 @@ class FeedforwardTrainer:
     def train(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
-        train_loader = DataLoader(
-            self.train_dataset, batch_size=self.batch_size,
-            shuffle=True, num_workers=8, pin_memory=True, prefetch_factor=2
+        dkw = _dataloader_kwargs(
+            self.dataloader_num_workers,
+            self.device,
+            self.dataloader_prefetch_factor,
         )
-        val_loader   = DataLoader(
-            self.val_dataset, batch_size=self.batch_size,
-            shuffle=False, num_workers=8, pin_memory=True, prefetch_factor=2
+        train_loader = DataLoader(
+            self.train_dataset, batch_size=self.batch_size, shuffle=True, **dkw
+        )
+        val_loader = DataLoader(
+            self.val_dataset, batch_size=self.batch_size, shuffle=False, **dkw
         )
 
         loss_curve, val_curve = [], []
