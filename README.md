@@ -59,7 +59,6 @@ The repo keeps an empty `trained_models/` tree via `.gitkeep`; `.pt` files stay 
 
 Training reads target `.npy` files from disk; **noise `z0`** is drawn each step in `cleanup_ssps/dataset.py` from `trainer.noise_type`. Eval uses the same noise/target types; signal-strength sweeps blend only the **model initial state** in `utils/evaluation.py`, not the dataset.
 
-**Do not commit** a project-local `lib/python3.10/...` tree (that usually means the IDE pointed at a venv inside the repo). Use `.venv` outside the tree or a normal virtualenv; `lib/` is gitignored.
 
 ## Old multi-experiment driver
 
